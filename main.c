@@ -2,6 +2,8 @@
 
 SDL_Window* window = NULL;
 SDL_Renderer* renderer = NULL;
+SDL_Surface* image = NULL;
+SDL_Texture* textures[2];
 
 double px, py, pa, dirx, diry;
 
@@ -9,8 +11,8 @@ int world[8][8] =
 {
 	{1, 1, 1, 1, 1, 1, 1, 1},
 	{1, 0, 0, 0, 0, 0, 0, 1},
-	{1, 0, 1, 1, 0, 0, 0, 1},
-	{1, 0, 0, 1, 0, 0, 1, 1},
+	{1, 0, 2, 2, 0, 0, 0, 1},
+	{1, 0, 0, 2, 0, 0, 1, 1},
 	{1, 0, 0, 0, 0, 0, 1, 1},
 	{1, 0, 0, 0, 0, 0, 0, 1},
 	{1, 0, 0, 1, 0, 0, 0, 1},
@@ -27,7 +29,7 @@ int init_sdl(void)
 	}
 	window = SDL_CreateWindow("SDL2",
 			SDL_WINDOWPOS_CENTERED,
-			SDL_WINDOWPOS_CENTERED, 1024, 512, SDL_WINDOW_SHOWN);
+			SDL_WINDOWPOS_CENTERED, 624, 512, SDL_WINDOW_SHOWN);
 	if (window == NULL)
 	{
 		fprintf(stderr, "SDL_CreateWindow Error: %s\n",
@@ -45,6 +47,15 @@ int init_sdl(void)
 		return (1);
 	}
 	return (0);
+}
+
+void init_textures(void)
+{
+	image = SDL_LoadBMP("brick.bmp");
+        textures[0] = SDL_CreateTextureFromSurface(renderer, image);
+	image = SDL_LoadBMP("arrow.bmp");
+        textures[1] = SDL_CreateTextureFromSurface(renderer, image);
+
 }
 
 void draw_grid(void)
@@ -87,11 +98,12 @@ double calc_dist(double startX, double endX, double startY, double endY, double 
 	return (distance);
 }
 
-double cast_ray(int x, int y, double a)
+double cast_ray(int x, int y, double a, int i)
 {
+	SDL_Rect srcrect, dstrect;
 	double pointAX, pointAY;
         double pointBX, pointBY;
-        double ya, xa;
+        double ya, xa, slice;
         double vWallX, vWallY;
         double hWallX, hWallY;
         double vDist, hDist;
@@ -151,20 +163,51 @@ double cast_ray(int x, int y, double a)
         vDist = calc_dist(x, vWallX, y, vWallY, a);
         hDist = calc_dist(x, hWallX, y, hWallY, a);
 
-	SDL_SetRenderDrawColor(renderer, 255, 0, 255, 0);
+	SDL_SetRenderDrawColor(renderer, 51, 51, 51, 0);
 
         if (vDist < hDist)
 	{
-                SDL_RenderDrawLine(renderer,
-                                x + (7 / 2), y + (7 / 2),
-                                vWallX, vWallY);
-		SDL_SetRenderDrawColor(renderer, 255, 0, 0, 0);
+		vDist = vDist * cos(pa - a);
+                slice = (SIZE / vDist) * 540;
+                dstrect.x = i + RENDER_START;
+                dstrect.y = (SCREEN_HEIGHT - slice) / 2;
+                dstrect.w = 1;
+                dstrect.h = slice;
+		if (a < PI / 2 || a > PI * 3 / 2)
+			srcrect.x = (int)vWallY % 64;
+		else
+			srcrect.x = 63 - ((int)vWallY % 64);
+		srcrect.y = 0;
+		srcrect.w = 1;
+		srcrect.h = 64;
+		SDL_RenderCopy(
+				renderer,
+				textures[world[(int)vWallY / 64][(int)vWallX / 64] - 1],
+				&srcrect, &dstrect);
+		SDL_RenderDrawLine(renderer, RENDER_START + i,
+					(SCREEN_HEIGHT - slice) / 2 + slice - 1,
+					RENDER_START + i,
+					SCREEN_HEIGHT);
 		return (vDist);
 	}
-	SDL_RenderDrawLine(renderer,
-			x + (7 / 2), y + (7 / 2),
-			hWallX, hWallY);
-	SDL_SetRenderDrawColor(renderer, 200, 0, 0, 0);
+	hDist = hDist * cos(pa - a);
+	slice = (SIZE / hDist) * 540;
+                dstrect.x = i + RENDER_START;
+                dstrect.y = (SCREEN_HEIGHT - slice) / 2;
+                dstrect.w = 1;
+                dstrect.h = slice;
+		if (a <= PI && a >= 0)
+                	srcrect.x = (int)hWallX % 64;
+		else
+			srcrect.x = 63 - ((int)hWallX % 64);
+                srcrect.y = 0;
+                srcrect.w = 1;
+                srcrect.h = 64;
+                SDL_RenderCopy(
+				renderer,
+				textures[world[(int)hWallY / 64][(int)hWallX / 64] - 1],
+				&srcrect, &dstrect);
+	SDL_RenderDrawLine(renderer, RENDER_START + i, (SCREEN_HEIGHT - slice) / 2 + slice - 1, RENDER_START + i, SCREEN_HEIGHT);
 	return (hDist);
 }
 
@@ -200,18 +243,21 @@ void draw_fov(void)
 	{
 		if (curr > PI * 2)
 			curr -= PI * 2;
-		dist = cast_ray(px, py, curr);
-		dist = dist * cos(pa - curr);
-		slice = (SIZE / dist) * 277;
-		printf("a: %f\n", curr);
-		SDL_RenderDrawLine(renderer, RENDER_START + i, (SCREEN_HEIGHT - slice) / 2, RENDER_START + i, (SCREEN_HEIGHT - slice) / 2 + slice);
+		dist = cast_ray(px, py, curr, i);
+		//dist = dist * cos(pa - curr);
+		//slice = (SIZE / dist) * 277;
+		//SDL_RenderDrawLine(renderer, RENDER_START + i, (SCREEN_HEIGHT - slice) / 2, RENDER_START + i, (SCREEN_HEIGHT - slice) / 2 + slice);
+		
 		curr -= inc;
 	}
 }
 
-void draw_world(void)
+void draw_bar(void)
 {
-	//TODO
+	SDL_Rect rect = {0, 400, 624, 112};
+
+	SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
+	SDL_RenderFillRect(renderer, &rect);
 }
 
 int main()
@@ -221,8 +267,11 @@ int main()
 	pa = 0;
 	dirx = cos(pa) * 5;
 	diry = sin(pa) * 5;
+	
 	if (init_sdl() != 0)
 		return (1);
+
+	init_textures();
 	while (1)
 	{
 		SDL_SetRenderDrawColor(renderer, 127, 127, 127, 0);
@@ -267,9 +316,8 @@ int main()
 					}
 			}
 		}
-		draw_grid();
-		draw_player((int)px, (int)py, pa);
 		draw_fov();
+		draw_bar();
 		SDL_RenderPresent(renderer);
 	}
 	SDL_DestroyRenderer(renderer);
